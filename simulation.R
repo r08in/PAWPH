@@ -15,7 +15,6 @@ simulation <- function(m, n, beta, prop.out=0.1, prop.cens=0.2,
                        res_rda=NULL,...){
   cl <- makeCluster(parallel::detectCores())
   registerDoParallel(cl)
-  #registerDoSEQ()
   p <- length(beta)
   ind_beta <- which(beta!=0)
   numout <- n * prop.out
@@ -48,8 +47,7 @@ simulation <- function(m, n, beta, prop.out=0.1, prop.cens=0.2,
         betaHat_re <- res_rda[[km]]$betaHat_re
         gammaHat <- res_rda[[km]]$gammaHat
         alpha <- res_rda[[km]]$alpha
-      }else if(method[km]=="n.cox"){
-        # naive cox
+      }else if(method[km]=="n.cox"){# naive (standard) cox
         betaHat <- foreach(y=y_list, X=X_list, .packages = "survival") %dopar% {
           fit <- coxph(y~X)
           summary(fit)$coefficients[,"coef"]
@@ -62,10 +60,9 @@ simulation <- function(m, n, beta, prop.out=0.1, prop.cens=0.2,
           fit <- coxr(y~X, trunc = 0.95)
           fit$coefficients
         }
-        #browser()
         betaHat <- sapply(betaHat, function(a) a)
         gammaHat <- NULL
-      }else if(method[km]=="np.cox"){
+      }else if(method[km]=="np.cox"){#Cox-ALASSO
         betaHat <- foreach(y=y_list, X=X_list, .packages = c("survival", "ncvreg2")) %dopar% {
           fit <- cv.ncvsurv(X, y, penalty="lasso",returnX = FALSE, seed = seed)
           fit <- cv.ncvsurv(X, y, penalty="lasso",penalty.factor = 1/pmax(abs(coef(fit)), 1e-5), returnX = FALSE,
@@ -74,22 +71,14 @@ simulation <- function(m, n, beta, prop.out=0.1, prop.cens=0.2,
         }
         betaHat <- sapply(betaHat, function(a) a)
         gammaHat <- NULL
-      }else if(method[km]=="r.cox"){
+      }else if(method[km]=="r.cox"){ # oracle Cox
         # estimator by removing outlier
         betaHat <- foreach(y=y_list, X=X_list, .packages = "survival") %dopar% {
           summary(coxph(y[1:(n-numout)]~X[1:(n-numout),]))$coefficients[,"coef"]
         }
         betaHat <- sapply(betaHat, function(a) a)
         gammaHat <- NULL
-      }else if(method[km]=="rp.cox"){
-        yy <- y_list[[1]][1:(n-numout)]
-        XX <- X_list[[1]][1:(n-numout),]
-        ## alasso
-        fit <- cv.ncvsurv(XX, yy, seed=seed, penalty="lasso",returnX = FALSE)
-        fit <- cv.ncvsurv(XX, yy, seed=seed, penalty="lasso",penalty.factor = 1/pmax(abs(coef(fit)), 1e-5), returnX = T)
-        beta.alasso <- coef(fit)
-        #local_mfdr(fit$fit, lambda=fit$lambda.min)
-        SE.alasso <- SE.alasso(yy, XX, B=100)
+      }else if(method[km]=="rp.cox"){ # oracle Cox-ALASSO
         # estimator by removing outlier
         betaHat <- foreach(y=y_list, X=X_list, .packages = c("survival", "ncvreg2")) %dopar% {
           fit <- cv.ncvsurv(X[1:(n-numout),], y[1:(n-numout)], penalty="lasso",returnX = FALSE, seed = seed)
@@ -100,42 +89,12 @@ simulation <- function(m, n, beta, prop.out=0.1, prop.cens=0.2,
         betaHat <- sapply(betaHat, function(a) a)
         gammaHat <- NULL
         
-      }else if(method[km]=="o.cox"){
-        # oracle estimator
-        betaHat <- foreach(y=y_list, X=X_list, .packages = "survival") %dopar% {
-          X.aug <- cbind(X, diag(nrow(X)))
-          beta_tmp <- summary(coxph(y~X.aug[, c(1:p, p+ind.o)]))$coefficients[,"coef"]
-          beta_tmp[1:p]
-        }
-        betaHat <- sapply(betaHat, function(a) a)
-        gammaHat <- NULL
-      }else if(method[km]=="op.cox"){
-        # penalized oracle estimator
-        if(numout==0)
-          betaHat=NULL
-        else{
-          betaHat <- foreach(y=y_list, X=X_list, .packages = "ncvreg2") %dopar% {
-            X.aug <- cbind(X, diag(nrow(X)))
-            fit <- ncvsurv(X.aug[, c(1:p, p+ind.o)], y, penalty="lasso", penalty.factor = c(rep(0,p), rep(1,numout)),
-                           seed=seed, returnX = FALSE)
-            lam <- fit$lambda[which.min(BIC(fit))]
-            betaHat.op <- coef(fit, lambda=lam)
-            betaHat.op[1:p]
-          }
-          betaHat <- sapply(betaHat, function(a) a)
-          gammaHat <- NULL
-        }
-        
-      }else if(method[km]=="prcox"){
+      }else if(method[km]=="prcox"){ # PAWPH
         ## prcox
         res <- foreach(y=y_list, X=X_list, .packages = c("ncvreg2","gbm", "dplyr","survival", "glmnet")) %dopar%{
           source("prcox.R")
           prcoxreg(y=y, X=X, seed = seed, ...)
         }
-        # browser()
-        # for(i in 1:m){
-        #   res <- prcoxreg(y=y_list[[i]], X=X_list[[i]], seed=seed, cond.CI=F,...)
-        # }
         betaHat <- sapply(res, getElement, "betaHat")
         betaHat_re <- sapply(res, getElement, "betaHat_re")
         gammaHat <- sapply(res, getElement, "gammaHat")

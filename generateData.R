@@ -22,9 +22,10 @@ generateData <- function(n, beta=c(1,2,-1), prop.out=0.1, prop.cens=0.2,
     gamma=rep(0,n)
   }
   if(lp.con & all.equal(gamma, rep(0,n))& num.out>0){
-    # k.gamma <- runif(num.out, min=3, max=5) * 
-    #   c(rep(1, floor(num.out*0.5)), rep(-1,ceiling(num.out*0.5)))
-    k.gamma <-c(rep(2, floor(num.out*0.5)), rep(-2,ceiling(num.out*0.5)))
+
+    # k.gamma <-c(rep(2, floor(num.out*0.5)), rep(-2,ceiling(num.out*0.5)))
+    k.gamma <-c(rep(5, floor(num.out*0.5)), rep(-5,ceiling(num.out*0.5)))
+    # k.gamma <-c(rep(8, floor(num.out*0.5)), rep(-8,ceiling(num.out*0.5)))
     gamma <- c(rep(0, n-num.out), k.gamma)
   }
   ## generate failure time
@@ -48,12 +49,8 @@ generateData <- function(n, beta=c(1,2,-1), prop.out=0.1, prop.cens=0.2,
     obs <- getObservedTime(ftime[1:(n-num.out)], prop.cens=(n*prop.cens-num.cens.out)/(n-num.out))
     survtime <- c(obs$survtime, ftime[(n-num.out+1):n])
     delta <- c(obs$delta, rep(1, num.out))
-    # add censored outliers
-    # gamma.cens <- c(rep(0, n-num.out), runif(num.out, min=-k.gamma, max=-k.gamma+1))
-    # ftime.cens <- (-log(r.u)/(h0^k.shape*exp(X %*% beta + gamma.cens)))^(1/k.shape)
     if(num.cens.out!=0){
       ind.cens.out <- sample(which(gamma<0), num.cens.out)
-      # survtime[ind.cens.out] <- ftime.cens[ind.cens.out]
       delta[ind.cens.out] <- 0
     }
     ncens <- obs$ncens + num.cens.out
@@ -136,51 +133,3 @@ getObservedTime <- function(ftime, prop.cens, L.init=10, tol=0.01){
   survtime<- pmin(ftime, ctime)
   return(list(survtime=survtime, delta=delta, L=L.curr, ncens=ncens.curr))
 }
-# generateData2 <- function(n, p, beta=c(1,2,-1), haz.base=2, prop.out=0.1,
-#                          r=5, L=10, x.con=F, lp.con=T, y.con=F){
-# 
-#   numout <- n * prop.out
-#   mu.x <- rep(0, p)
-#   Sigma.x <- matrix(rep(0.1,p*p),p,p)+diag(0.9,p)
-#   # generate data
-#   X <- mvrnorm(n, mu=mu.x, Sigma = Sigma.x)
-#   if(x.con){
-#     # X[(n-numout+1):n, ] <- X[(n-numout+1):n, ] +
-#     #   mvrnorm(numout, mu=mu.x+r, Sigma = Sigma.x)
-#     # X.out <- mvrnorm(numout, mu=mu.x+r, Sigma = Sigma.x) #not good
-#     # X[(n-numout+1):n, ] <- X.out
-#     X[(n-numout+1):n, ] <- matrix(rchisq(numout*p,df=5),nrow=numout,ncol=p)
-#   }
-#   gamma <- rep(0, n)
-#   if(lp.con){
-#     gamma <- c(rep(0, n-numout), rep(r, numout*0.5), rep(-r, numout*0.5))
-#   }
-#   r.u <- runif(n)
-#   #r.u[(n-numout+1):n] <- runif(numout, min=1-1e-3)
-#   #ftime <- -log(r.u)/(haz.base*exp(X %*% beta + sign(X %*% beta)*gamma ))
-#   ftime <- -log(r.u)/(haz.base*exp(X %*% beta + gamma ))
-#   if(y.con){
-#     ftime[(n-numout+1):n] <- ftime[(n-numout+1):n]
-#   }
-#   ctime <- pmin(runif(n, 0, L+2), L)
-#   # ctime <- runif(n, 0, L+2)
-#   delta <- ifelse(ftime<=ctime, 1, 0)
-#   survtime <- pmin(ftime, ctime)
-#   delta <- rep(1,n)
-#   survtime <- ftime
-#   y <- Surv(survtime, as.matrix(delta,nrow=n))
-#   list(y=y, X=X, survtime=survtime, delta=delta)
-# }
-# 
-# 
-# p <- 3
-# Sigma.x <- matrix(rep(0.1,p*p),p,p)+diag(0.9,p)
-# # generate data
-# X <- mvrnorm(n, mu=mu.x, Sigma = Sigma.x)
-# haz.base=2
-# r.u <- runif(n)
-# ftime <- -log(r.u)/(haz.base*exp(X %*% beta))
-# L <- 10
-# ctime <- runif(n, 0, L)
-# delta <- ifelse(ftime<=ctime, 1, 0)
-# survtime <- pmin(ftime, ctime)
