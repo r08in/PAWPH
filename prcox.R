@@ -85,19 +85,12 @@ cv.prcox <- function(y,X, nfolds=10, seed,
     res <- cvf.prcox(i, X, y, fold, cv.args)
     lik.val[fold==i,colnames(res$lik)] <- res$lik
   }
-  #browser()
   cve <- apply(lik.val, 2, function(x) {
-    # up <- quantile(x, probs = .75, na.rm=T) + 1.5 * IQR(x, na.rm = T)
-    # mean(x[x<up], na.rm = T)
     xx <- x[x<quantile(x, 0.8, na.rm=T)]
     mean(xx, na.rm = T)
-    #mean(x, na.rm=T)
-    #mean(x[which(abs(x-median(x, na.rm = T))/mad(x, na.rm = T)<2.5)], na.rm = T)
   })
   if(!is.null(pout.max)){
     prop.out <- apply(fit$beta[-(1:p),], 2, function(b) sum(b!=0))/n
-    #df.beta <- apply(fit$beta[(1:p),], 2, function(b) sum(b!=0))
-    #lam.ind <- which(prop.out<=pout.max & df.beta<=dfmax) 
     lam.ind <- which(prop.out<=pout.max) 
     cve[-lam.ind] <- Inf
   }
@@ -105,7 +98,6 @@ cv.prcox <- function(y,X, nfolds=10, seed,
   cve[which(apply(fit$beta, 2, anyNA))] <- Inf
   lam <- fit$lambda[which.min(cve)]
   betaHat <- coef(fit, lambda=lam)
-  # betaHat <- coef(fit, s=lam)
   gammaHat <- betaHat[(p+1):(n+p)]
   betaHat <- betaHat[1:p]
   list(betaHat=betaHat, gammaHat=gammaHat, fit=fit, cve=cve, cve.min=min(cve, na.rm = T),
@@ -151,27 +143,23 @@ prcoxreg <- function(y, X, seed, alpha=1, cond.CI=FALSE,pout.max=0.2, permu.weig
   if(!is.null(pout.max)){
     pout.max2 <- pout.max+prop.cens
   }
-  if(FALSE){ # non-censored data
-    res <- cv.prcox.adap(y, X, seed, alpha=alpha, ...)
-  }else{ # censored data
-    if(is.vs){
-      res.vs <- cv.prcox.adap(y, X, seed, alpha=alpha, ...)
-      betaHat.vs <- res.vs$betaHat
-      # all as event for outlier detection
-      y[,2] <- rep(1, n)
-      if(sum(betaHat.vs!=0)>0){
-        res <- cv.prcox.adap(y, as.matrix(X[,which(betaHat.vs!=0)]), seed, 
-                             alpha=1, pout.max=pout.max2)
-        res$betaHat <- betaHat.vs
-        res$opt.alpha <- res.vs$opt.alpha
-      }else{
-        res <- cv.prcox.adap(y, X, seed, alpha=alpha, pout.max=pout.max2,...)
-      }
-      
+  if(is.vs){
+    res.vs <- cv.prcox.adap(y, X, seed, alpha=alpha, ...)
+    betaHat.vs <- res.vs$betaHat
+    # all as event for outlier detection
+    y[,2] <- rep(1, n)
+    if(sum(betaHat.vs!=0)>0){
+      res <- cv.prcox.adap(y, as.matrix(X[,which(betaHat.vs!=0)]), seed, 
+                           alpha=1, pout.max=pout.max2)
+      res$betaHat <- betaHat.vs
+      res$opt.alpha <- res.vs$opt.alpha
     }else{
-      y[,2] <- rep(1, n)
-      res<- cv.prcox.adap(y, X, seed, alpha=alpha, pout.max=pout.max2,permu.weight=permu.weight)
+      res <- cv.prcox.adap(y, X, seed, alpha=alpha, pout.max=pout.max2,...)
     }
+    
+  }else{
+    y[,2] <- rep(1, n)
+    res<- cv.prcox.adap(y, X, seed, alpha=alpha, pout.max=pout.max2,permu.weight=permu.weight)
   }
   ind.cens <- which(delta==0)
   res$gammaHat[ind.cens] <- ifelse(res$gammaHat[ind.cens]>-2, 0, res$gammaHat[ind.cens])
@@ -186,22 +174,10 @@ prcoxreg <- function(y, X, seed, alpha=1, cond.CI=FALSE,pout.max=0.2, permu.weig
     res$betaHat_re <- res$betaHat
   }
   names(res$betaHat_re) <- names(res$betaHat)
-  ## refine outlier detection
   res$gammaHat <- ifelse(abs(res$gammaHat)<0.5, 0, res$gammaHat)
   
   ## CI
   if(cond.CI){
-    # ci.mat <- matrix(0, nrow=7, ncol=ncol(X))
-    # rownames(ci.mat) <- c("SE", "lower_n", "upper_n", "lower_q", "upper_q", "z", "pvalue")
-    # colnames(ci.mat) <- names(res$betaHat)
-    # #se.res <- SE.boot(y, X, pout.max=pout.max, alpha=ifelse(is.vs, res$opt.alpha, 1), seed=seed)
-    # ind.vs <- which(res$betaHat!=0)
-    # se.res <- SE.boot (y, X[,ind.vs], pout.max=pout.max, alpha=1, seed=seed)
-    # res$CI <- sapply(1:length(ind.vs), function(i) getCI(se.res$betaHat[,i], b=res$betaHat_re[ind.vs[i]]))
-    # ci.mat[,ind.vs] <- res$CI
-    # res$CI <- ci.mat
-    # res$se.res <- se.res
-    
     se.res <- SE.boot(y, X, pout.max=pout.max, alpha=ifelse(is.vs, res$opt.alpha, 1), seed=seed,...)
     res$CI <- sapply(1:ncol(X), function(i) getCI(se.res$betaHat[,i], b=res$betaHat_re[i]))
     rownames(res$CI) <- c("SE", "lower_n", "upper_n", "lower_q", "upper_q", "z", "pvalue")
@@ -216,7 +192,6 @@ SE.boot <- function(orig_y, orig_X, B=100, seed=1234, ...){
   n <- nrow(orig_X)
   p <- ncol(orig_X)
   boot.args <- list(...)
-  #cl <- makeCluster(parallel::detectCores()-1)
   cl <- makeCluster(16)
   registerDoParallel(cl)
   res <-  foreach(ind=replicate(B, sample(n,n,replace = T), simplify = FALSE),
@@ -236,25 +211,6 @@ SE.boot <- function(orig_y, orig_X, B=100, seed=1234, ...){
   return(list(betaHat=betaHat, res=res))
 }
 
-# SE.permu <- function(orig_y, orig_X, B=100, seed=1234,...){
-#   set.seed(seed)
-#   n <- nrow(orig_X)
-#   p <- ncol(orig_X)
-#   cl <- makeCluster(2)
-#   registerDoParallel(cl)
-#   permu.weight <- replicate(B, rexp(n), simplify = FALSE)
-#   res <-  foreach(permu.weight=permu.weight,
-#                   .packages = c("ncvreg2","gbm", "dplyr","survival", "glmnet"))%dopar%{
-#                     source("prcox.R")
-#                     y <- orig_y
-#                     X <- orig_X
-#                     prcoxreg(y, X, seed = seed,permu.weight=permu.weight,...)
-#                   }
-#   betaHat <- t(sapply(res, getElement, "betaHat_re"))
-#   stopCluster(cl)
-#   registerDoSEQ()
-#   return(list(betaHat=betaHat, res=res))
-# }
 
 getCI <- function(betas, b, alpha=0.05){
   se <- sd(betas)
